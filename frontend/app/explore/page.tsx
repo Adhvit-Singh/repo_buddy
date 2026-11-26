@@ -15,8 +15,8 @@ import ScanProgress from "@/components/ScanProgress";
 import VulnerabilityList from "@/components/VulnerabilityList";
 import {
   Shield, ArrowRight, RotateCcw, AlertTriangle,
-  Network, Layers, Cable, Workflow, BookOpen, Bug, LinkIcon, Lightbulb,
-  Lock, Share2, Github, History,
+  Layers, BookOpen, LinkIcon, Lightbulb,
+  Share2, Github,
   Zap, Rocket, CheckCircle, XCircle, Globe, Server, Copy, Check,
 } from "lucide-react";
 

@@ -6,10 +6,9 @@ import {
   fetchMonitoredRepos, fetchGitHubUser,
   trackRepo, triggerScan, fetchRepoHistory, toggleMonitor,
 } from "@/services/api";
-import { MonitoredRepo, Repository, GitHubUser } from "@/types";
+import { MonitoredRepo, GitHubUser } from "@/types";
 import DashboardHeader from "@/components/DashboardHeader";
 import MonitoredRepoCard from "@/components/MonitoredRepoCard";
-import StatCard from "@/components/StatCard";
 import EmptyState from "@/components/EmptyState";
 import ShareModal from "@/components/ShareModal";
 import {
