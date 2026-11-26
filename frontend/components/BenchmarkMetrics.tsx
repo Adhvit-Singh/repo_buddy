@@ -26,7 +26,9 @@ export default function BenchmarkMetrics({ repoId }: BenchmarkMetricsProps) {
     fetchBenchmark();
   }, [repoId]);
 
-  if (loading || !data || data.percentile === null) return null;
+  // A percentile over a handful of scans is meaningless — only show it with enough data.
+  const MIN_APPS_FOR_BENCHMARK = 20;
+  if (loading || !data || data.percentile === null || data.total_apps < MIN_APPS_FOR_BENCHMARK) return null;
 
   return (
     <div className="surface-card p-5 border-l-4 animate-fade" style={{ borderLeftColor: "var(--green)" }}>
@@ -34,10 +36,10 @@ export default function BenchmarkMetrics({ repoId }: BenchmarkMetricsProps) {
         <div>
           <h3 className="text-headline text-xl flex items-center gap-2 mb-1" style={{ color: "var(--text-primary)" }}>
             <Trophy className="w-5 h-5" style={{ color: "var(--green)" }} />
-            Top {data.percentile}% Globally
+            Top {data.percentile}% of scanned repos
           </h3>
           <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            This repository ranks in the top {data.percentile}% of all {data.total_apps} apps scanned by repo_buddy for security and health.
+            This repository ranks in the top {data.percentile}% of all {data.total_apps} repos scanned on this instance, by health score.
           </p>
         </div>
 
