@@ -1,13 +1,12 @@
 """
-repo_buddy DAST Service — Dynamic Application Security Testing
+repo_buddy — DAST (Dynamic Application Security Testing) probe
 
-Probes a live deployed URL with 20 unauthenticated, non-destructive checks.
-All checks are passive observation (no writes, no auth bypasses attempted).
-Returns structured proof: exact request sent + server response received.
-
-This is the moat. Rafter does static scanning. We show real exploits.
-The 6 vibe-coder checks (Supabase RLS, Firebase rules, NextAuth CSRF,
-Clerk keys, Vercel env leak, Stripe webhooks) are unique to repo_buddy.
+Probes a live deployed URL with 20 unauthenticated, non-destructive checks:
+14 general web checks plus 6 aimed at stacks common in AI-built apps
+(Supabase RLS, Firebase rules, NextAuth CSRF, Clerk keys, Vercel env leak,
+Stripe webhooks). All checks are passive observation — no writes and no auth
+bypass attempts. Each result carries proof: the request sent and the
+response received.
 """
 import asyncio
 import re
@@ -16,6 +15,8 @@ from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import httpx
+
+from app.services.url_safety import validate_public_http_url
 
 TIMEOUT = 8.0
 MAX_JS_BYTES = 150_000  # 150KB cap on JS bundle scan
@@ -757,18 +758,22 @@ async def probe_live_app(url: str) -> dict:
     Run all 20 DAST checks against a live URL.
     Returns structured results with proof for each check.
     """
-    # Normalize URL
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
-    url = url.rstrip("/")
+    url = validate_public_http_url(url)
 
     start = time.time()
+
+    async def _block_private_redirects(request: httpx.Request):
+        # Every request — including ones produced by following redirects —
+        # must still point at a public address (SSRF guard).
+        validate_public_http_url(str(request.url))
 
     limits = httpx.Limits(max_connections=20, max_keepalive_connections=10)
     async with httpx.AsyncClient(
         limits=limits,
         follow_redirects=True,
-        headers={"User-Agent": "repo_buddy-Security-Scanner/1.0 (https://repo_buddy.dev)"},
+        max_redirects=5,
+        headers={"User-Agent": "repo_buddy-security-scanner/1.0"},
+        event_hooks={"request": [_block_private_redirects]},
     ) as client:
         checks = await asyncio.gather(
             # Original 14 checks
