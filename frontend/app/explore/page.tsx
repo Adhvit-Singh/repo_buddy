@@ -658,7 +658,7 @@ Please:
               </h2>
               <p style={{ marginBottom: "1.5rem", color: "var(--text-secondary)", fontSize: "0.875rem" }}>
                 {explainMode === "simple"
-                  ? "Your app is like a restaurant. Here are the parts and how they work together."
+                  ? "Here are the main parts of your app and how they work together."
                   : "Component-level architecture showing service boundaries and communication patterns."}
               </p>
               {explainMode === "simple" && report?.tech_stack && (
@@ -684,19 +684,16 @@ Please:
                         </p>
                       </div>
                     )}
-                    <div>
-                      <div style={{ marginBottom: "4px" }}>
-                        <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "0.75rem", letterSpacing: "0.08em" }}>HOW THEY CONNECT</span>
+                    {report.simple_explanation && (
+                      <div>
+                        <div style={{ marginBottom: "4px" }}>
+                          <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "0.75rem", letterSpacing: "0.08em" }}>HOW IT WORKS</span>
+                        </div>
+                        <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6, paddingLeft: "2rem" }}>
+                          {report.simple_explanation}
+                        </p>
                       </div>
-                      <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6, paddingLeft: "2rem" }}>
-                        The menu sends orders to the kitchen through a “window” called an API. When someone clicks “Sign Up,” the frontend sends a message to the backend.
-                      </p>
-                    </div>
-                    <div style={{ background: "var(--surface-main)", borderRadius: "6px", padding: "0.75rem 1rem", marginTop: "0.5rem" }}>
-                      <p style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", margin: 0 }}>
-                        Switch to &ldquo;Advanced&rdquo; mode (top right) to see the technical architecture diagram.
-                      </p>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
