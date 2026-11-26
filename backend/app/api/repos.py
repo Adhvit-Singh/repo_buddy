@@ -15,19 +15,15 @@ Routes:
   POST /api/repos/autofix            → Auto-fix PR generation
   POST /api/repos/chat               → AI Sidekick chat
 """
-import re
 import httpx
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from typing import List, Dict, Any, Optional
 
-limiter = Limiter(key_func=get_remote_address)
-
-_GITHUB_URL_RE = re.compile(r"^https://github\.com/[\w.\-]+/[\w.\-]+(\.git)?/?$")
+from app.rate_limit import limiter
+from app.services.url_safety import UnsafeURLError, normalize_github_url
 from app.services.github_service import get_user_repos
-from app.services.autofix_service import generate_and_apply_fix
+from app.services.autofix_service import AutoFixError, generate_and_apply_fix
 from app.services.chat_service import chat_with_codebase
 from app.database import (
     create_scan, get_scan, get_scan_history, get_scan_by_commit,
@@ -70,10 +66,10 @@ class AnalyzeUrlRequest(BaseModel):
     @field_validator("github_url")
     @classmethod
     def validate_github_url(cls, v: str) -> str:
-        v = v.strip()
-        if not _GITHUB_URL_RE.match(v):
-            raise ValueError("github_url must be a valid https://github.com/owner/repo URL")
-        return v
+        try:
+            return normalize_github_url(v)
+        except UnsafeURLError as e:
+            raise ValueError(str(e))
 
 
 class TrackRepoRequest(BaseModel):
@@ -84,16 +80,16 @@ class TrackRepoRequest(BaseModel):
     @field_validator("github_url")
     @classmethod
     def validate_github_url(cls, v: str) -> str:
-        v = v.strip()
-        if not _GITHUB_URL_RE.match(v):
-            raise ValueError("github_url must be a valid https://github.com/owner/repo URL")
-        return v
+        try:
+            return normalize_github_url(v)
+        except UnsafeURLError as e:
+            raise ValueError(str(e))
 
 class AutoFixRequest(BaseModel):
     repo_name: str
     vulnerabilities: List[Dict[str, Any]]
     scan_id: Optional[str] = None
-    github_token: Optional[str] = None  # user's token; falls back to GITHUB_TOKEN env var
+    github_token: Optional[str] = None  # user's own token (or send it as a Bearer header)
 
 class ChatRequest(BaseModel):
     question: str
@@ -348,30 +344,28 @@ async def list_repos(authorization: str = Header(None)):
     return repos
 
 
-# ── Auto-Fix (Paid Tier) ──────────────────────
+# ── Auto-Fix ──────────────────────────────────
 
 @router.post("/autofix")
-async def autofix_vulnerabilities(payload: AutoFixRequest, authorization: str = Header(None)):
-    """Auto-Fix PR generation — marked as paid tier."""
+@limiter.limit("3/minute")
+async def autofix_vulnerabilities(request: Request, payload: AutoFixRequest, authorization: str = Header(None)):
+    """Generate fixes with the LLM and open a PR using the caller's own GitHub token."""
+    import asyncio
     from app.database import update_scan_autofix_pr
-    # Prefer user token from payload, then Authorization header, then env var
-    user_token = (
-        payload.github_token
-        or (authorization.replace("Bearer ", "") if authorization else None)
+
+    user_token = payload.github_token or (
+        authorization.removeprefix("Bearer ").strip() if authorization else None
     )
     try:
-        pr_url = generate_and_apply_fix(payload.repo_name, payload.vulnerabilities, user_token)
-        if payload.scan_id and pr_url and "error-" not in pr_url and "mock-" not in pr_url:
-            update_scan_autofix_pr(payload.scan_id, pr_url)
+        pr_url = await asyncio.to_thread(
+            generate_and_apply_fix, payload.repo_name, payload.vulnerabilities, user_token
+        )
+    except (AutoFixError, UnsafeURLError) as e:
+        raise HTTPException(status_code=getattr(e, "status_code", 400), detail=str(e))
 
-        return {
-            "status": "success",
-            "pr_url": pr_url,
-            "message": "Auto-Fix PR generated successfully.",
-            "tier": "paid",
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if payload.scan_id:
+        update_scan_autofix_pr(payload.scan_id, pr_url)
+    return {"status": "success", "pr_url": pr_url, "message": "Auto-fix PR opened."}
 
 
 # ── AI Sidekick Chat ───────────────────────────
