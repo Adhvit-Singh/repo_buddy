@@ -1,95 +1,69 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import AuthCallback from "@/components/AuthCallback";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+/**
+ * GitHub OAuth lands here with a one-time `handoff` code (never the token).
+ * We trade it for the token via POST, then load the user profile.
+ */
 function CallbackContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const started = useRef(false);
 
   useEffect(() => {
-    const token = searchParams.get("access_token");
+    if (started.current) return; // handoff codes are single-use; don't redeem twice
+    started.current = true;
+
+    const handoff = searchParams.get("handoff");
     const error = searchParams.get("error");
 
-    if (error) {
-      console.error("Auth error:", error);
+    const fail = (reason: unknown) => {
+      console.error("Auth error:", reason);
       setStatus("error");
       setTimeout(() => router.push("/"), 3000);
+    };
+
+    if (error || !handoff) {
+      fail(error || "missing handoff code");
       return;
     }
 
-    if (!token) {
-      setStatus("error");
-      setTimeout(() => router.push("/"), 3000);
-      return;
-    }
-
-    localStorage.setItem("github_token", token);
-
-    // Fetch GitHub user info + repo_buddy plan in parallel
-    const fetchUserData = async () => {
+    (async () => {
       try {
-        const ghRes = await fetch("https://api.github.com/user", {
-          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+        const exRes = await fetch(`${API_BASE}/auth/github/exchange`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ handoff }),
         });
-        if (!ghRes.ok) throw new Error("GitHub user fetch failed");
-        const ghUser = await ghRes.json();
+        if (!exRes.ok) throw new Error("handoff exchange failed");
+        const { access_token } = await exRes.json();
 
-        // Upsert user in backend and get their repo_buddy profile (including plan)
-        let repo_buddyUser: { id?: string; plan?: string } = {};
-        try {
-          const glRes = await fetch(`${API_BASE}/api/repos/`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          // The response may contain user info from the auth layer
-          if (glRes.ok) {
-            const glData = await glRes.json();
-            if (glData.user) repo_buddyUser = glData.user;
-          }
-        } catch {}
+        // Remove the code from the address bar / history.
+        window.history.replaceState(null, "", "/auth/callback");
+        localStorage.setItem("github_token", access_token);
 
-        // Try to get plan separately if we have a user id
-        let plan = "free";
-        if (repo_buddyUser.id) {
-          try {
-            const planRes = await fetch(`${API_BASE}/api/payments/plan?user_id=${repo_buddyUser.id}`);
-            if (planRes.ok) { const pd = await planRes.json(); plan = pd.plan || "free"; }
-          } catch {}
-        }
-
-        // Store user in localStorage for client-side use
-        localStorage.setItem("gh_user", JSON.stringify({
-          id: repo_buddyUser.id || String(ghUser.id),
-          login: ghUser.login,
-          name: ghUser.name,
-          avatar_url: ghUser.avatar_url,
-          email: ghUser.email,
-          plan,
-        }));
+        const meRes = await fetch(`${API_BASE}/auth/github/me`, {
+          headers: { Authorization: `Bearer ${access_token}` },
+        });
+        if (!meRes.ok) throw new Error("profile fetch failed");
+        localStorage.setItem("gh_user", JSON.stringify(await meRes.json()));
 
         setStatus("success");
         setTimeout(() => router.push("/dashboard"), 1500);
       } catch (err) {
-        console.error("Post-auth setup failed:", err);
-        // Still succeed — plan defaults to free, user can continue
-        setStatus("success");
-        setTimeout(() => router.push("/dashboard"), 1500);
+        localStorage.removeItem("github_token");
+        fail(err);
       }
-    };
-
-    fetchUserData();
+    })();
   }, [searchParams, router]);
 
-  return (
-    <AuthCallback
-      onComplete={() => router.push("/dashboard")}
-      status={status}
-    />
-  );
+  return <AuthCallback onComplete={() => router.push("/dashboard")} status={status} />;
 }
 
 export default function AuthCallbackPage() {
