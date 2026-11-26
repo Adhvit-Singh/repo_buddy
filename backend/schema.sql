@@ -10,9 +10,6 @@ CREATE TABLE IF NOT EXISTS users (
     name TEXT,
     avatar_url TEXT,
     email TEXT,
-    plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'starter', 'builder')),
-    stripe_customer_id TEXT,
-    razorpay_sub_id TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 

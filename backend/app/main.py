@@ -8,11 +8,9 @@ from app.auth.github import router as github_auth
 from app.api.repos import router as repo_api
 from app.api.webhooks import router as webhook_api
 from app.api.public import router as public_api
-from app.api.stripe import router as stripe_api
 from app.api.idea_to_app import router as idea_api
 from app.api.blueprints import router as blueprints_api
 from app.api.probe import router as probe_api
-from app.api.payments import router as payments_api
 
 app = FastAPI(title="repo_buddy Backend")
 app.state.limiter = limiter
@@ -61,11 +59,9 @@ app.include_router(github_auth, prefix="/auth/github")
 app.include_router(repo_api, prefix="/api/repos")
 app.include_router(webhook_api, prefix="/api/webhooks")
 app.include_router(public_api, prefix="/api/public")
-app.include_router(stripe_api, prefix="/api/stripe")
 app.include_router(idea_api, prefix="/api/idea")
 app.include_router(blueprints_api, prefix="/api/blueprints")
 app.include_router(probe_api, prefix="/api/probe")
-app.include_router(payments_api, prefix="/api/payments")
 
 
 @app.get("/")
