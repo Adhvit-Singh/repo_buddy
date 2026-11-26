@@ -1,3 +1,4 @@
+"""Backend settings, read from environment variables (see .env.example)."""
 import os
 import tempfile
 from dotenv import load_dotenv
@@ -7,10 +8,8 @@ load_dotenv()
 # -- Auth
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-JWT_SECRET = os.getenv("JWT_SECRET")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
 # -- LLM models (comma-separated, tried in order). Providers retire models
 # regularly; override via env instead of editing code.
@@ -41,12 +40,6 @@ DATABASE_PATH = os.getenv(
     "DATABASE_PATH",
     os.path.join(BACKEND_ROOT, ".storage", "repo_buddy.db"),
 )
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-
-# -- Queue
-UPSTASH_REDIS_URL = os.getenv("UPSTASH_REDIS_URL", "")
-UPSTASH_REDIS_TOKEN = os.getenv("UPSTASH_REDIS_TOKEN", "")
 
 # -- Webhooks
 GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
