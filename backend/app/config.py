@@ -51,20 +51,3 @@ UPSTASH_REDIS_TOKEN = os.getenv("UPSTASH_REDIS_TOKEN", "")
 # -- Webhooks
 GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "")
 
-# -- Stripe
-# Create price IDs in stripe.com/dashboard → Products
-# Starter: $7/mo recurring  Builder: $29/mo recurring
-# For INR prices: separate Stripe prices in INR currency
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-STRIPE_PRICE_STARTER_USD = os.getenv("STRIPE_PRICE_STARTER_USD", "")
-STRIPE_PRICE_BUILDER_USD = os.getenv("STRIPE_PRICE_BUILDER_USD", "")
-STRIPE_PRICE_STARTER_INR = os.getenv("STRIPE_PRICE_STARTER_INR", "")
-STRIPE_PRICE_BUILDER_INR = os.getenv("STRIPE_PRICE_BUILDER_INR", "")
-
-# -- Razorpay (India primary — simpler card flows, lower fees)
-RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
-RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
-# Razorpay plan IDs (create at dashboard.razorpay.com → Subscriptions → Plans)
-RAZORPAY_PLAN_STARTER = os.getenv("RAZORPAY_PLAN_STARTER", "")
-RAZORPAY_PLAN_BUILDER = os.getenv("RAZORPAY_PLAN_BUILDER", "")

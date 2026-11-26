@@ -40,14 +40,6 @@ function ExploreContent() {
   const [probeLoading, setProbeLoading] = useState(false);
   const [probeCopied, setProbeCopied] = useState<string | null>(null);
   const [fixCopied, setFixCopied] = useState<string | null>(null);
-  const [userPlan, setUserPlan] = useState<string>("free");
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("gh_user");
-      if (stored) { const u = JSON.parse(stored); setUserPlan(u.plan || "free"); }
-    } catch {}
-  }, []);
 
   // Generate an AI-assistant-ready fix prompt (the moat)
   const generateFixPrompt = (vuln: { title: string; file: string; line?: number; description: string; severity: string; fix_suggestion?: string }) => {
@@ -1096,53 +1088,13 @@ Please:
           {/* Probe Live App Tab */}
           {activeTab === "probe" && (
             <div className="animate-in">
-              {/* Plan gate — DAST is Builder-only */}
-              {userPlan !== "builder" && (
-                <div style={{
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: "12px",
-                  background: "var(--surface-elevated)",
-                  padding: "3rem 2rem",
-                  textAlign: "center",
-                  marginBottom: "1.5rem",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: "1rem" }}>
-                    <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "var(--green-dim)", border: "1px solid var(--green-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Lock style={{ width: "20px", height: "20px", color: "var(--green)" }} />
-                    </div>
-                  </div>
-                  <h3 style={{ color: "var(--text-primary)", fontWeight: 700, fontSize: "1.15rem", marginBottom: "0.5rem" }}>
-                    DAST Probe is a Builder feature
-                  </h3>
-                  <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", maxWidth: "440px", margin: "0 auto 0.75rem", lineHeight: 1.6 }}>
-                    Run 20 real attack checks against your live app — CORS, exposed .env, SQL injection, Supabase RLS bypass, Stripe webhook forgery, and more. See the exact HTTP proof.
-                  </p>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center", marginBottom: "1.5rem" }}>
-                    {["CORS wildcard", "Supabase RLS", "Firebase test mode", "Stripe webhook", "API keys in JS", "SQL injection"].map(f => (
-                      <span key={f} style={{ fontSize: "0.72rem", background: "var(--surface-main)", border: "1px solid var(--border-subtle)", borderRadius: "999px", padding: "3px 10px", color: "var(--text-secondary)" }}>
-                        {f}
-                      </span>
-                    ))}
-                  </div>
-                  <a href="/pricing" className="btn btn-green" style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                    <Zap style={{ width: "14px", height: "14px" }} />
-                    Upgrade to Builder — $29/mo
-                  </a>
-                  <p style={{ color: "var(--text-tertiary)", fontSize: "0.75rem", marginTop: "0.75rem" }}>
-                    India? ₹999/mo via Razorpay (UPI / cards)
-                  </p>
-                </div>
-              )}
-
-              {/* Show probe UI only for builder */}
-              {userPlan === "builder" && (<>
               <div style={{ marginBottom: "1.5rem" }}>
                 <h2 className="text-headline" style={{ fontSize: "1.25rem", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   <Zap style={{ width: "18px", height: "18px", color: "var(--green)" }} />
                   Probe Live App
                 </h2>
                 <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "1rem" }}>
-                  Enter your deployed URL. repo_buddy will run 20 unauthenticated security checks — CORS, exposed secrets, missing headers, rate limiting, SQL injection, Supabase RLS, Firebase rules, Stripe webhooks, and more. Takes ~30 seconds.
+                  Enter your deployed URL. repo_buddy will run 20 unauthenticated, read-only security checks — CORS, exposed secrets, missing headers, rate limiting, SQL injection, Supabase RLS, Firebase rules, Stripe webhooks, and more. Takes ~30 seconds.
                 </p>
                 <div style={{
                   background: "rgba(34,197,94,0.06)",
@@ -1314,7 +1266,6 @@ Please:
                   </p>
                 </div>
               )}
-              </>)}
             </div>
           )}
 
