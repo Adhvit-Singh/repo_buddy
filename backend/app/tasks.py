@@ -52,7 +52,7 @@ def process_full_scan(scan_id: str, github_url: str):
             if repo_id:
                 cached = get_scan_by_commit(repo_id, commit_sha)
                 if cached:
-                    print(f"CACHE HIT: Commit {commit_sha[:7]} already scanned → copying results")
+                    print(f"CACHE HIT: Commit {commit_sha[:7]} already scanned -> copying results")
                     update_scan_with_cached(scan_id, cached)
                     return
 
@@ -160,7 +160,7 @@ def process_diff_scan(scan_id: str, github_url: str, changed_files: list = None,
             except Exception as slack_err:
                 print(f"WARN: slack alert failed: {slack_err}")
 
-        print(f"DIFF SCAN: {github_url} — {len(changed_files or [])} files, "
+        print(f"DIFF SCAN: {github_url} - {len(changed_files or [])} files, "
               f"{len(report.get('vulnerabilities', []))} new issues found")
 
     except Exception as e:
