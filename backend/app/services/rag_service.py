@@ -107,10 +107,17 @@ def chunk_file(path: str, text: str, size: int = CHUNK_SIZE, overlap: int = CHUN
         piece = text[start:end]
         if piece.strip():
             start_line = text.count("\n", 0, start) + 1
-            chunks.append(Chunk(path, start_line, start_line + piece.count("\n"), piece))
+            end_line = start_line + piece.rstrip("\n").count("\n")
+            chunks.append(Chunk(path, start_line, end_line, piece))
         if end >= len(text):
             break
-        start = max(end - overlap, start + 1)
+        # Step back by `overlap`, then snap to the start of that line so no
+        # chunk begins mid-line (always moving forward).
+        next_start = max(end - overlap, start + 1)
+        line_start = text.rfind("\n", start, next_start)
+        if line_start != -1 and line_start + 1 > start:
+            next_start = line_start + 1
+        start = next_start
     return chunks
 
 
