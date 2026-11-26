@@ -312,25 +312,10 @@ Please:
   const currentGroup = TAB_GROUPS.find((g) => g.tabs.some((t) => t.id === activeTab)) ?? TAB_GROUPS[0];
 
   const handleAutofix = async () => {
-    const isBuilder = userPlan === "builder";
-
-    if (!isBuilder) {
-      if (confirm("Auto-Fix PRs require the Builder plan. Upgrade now?")) {
-        try {
-          const ghUser = JSON.parse(localStorage.getItem("gh_user") || "{}");
-          const userId = ghUser.id || "anonymous";
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-          const res = await fetch(`${apiUrl}/api/payments/checkout`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: userId, plan: "builder" }),
-          });
-          const data = await res.json();
-          if (data.url) { window.location.href = data.url; return; }
-          if (data.razorpay_order_id) { window.location.href = "/pricing"; return; }
-        } catch (e) {
-          console.error("Checkout error", e);
-        }
+    const token = localStorage.getItem("github_token");
+    if (!token) {
+      if (confirm("Auto-fix opens a pull request on your repo, so it needs you to sign in with GitHub. Sign in now?")) {
+        window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/auth/github/login`;
       }
       return;
     }
@@ -340,7 +325,7 @@ Please:
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/api/repos/autofix`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("github_token")}` },
         body: JSON.stringify({
           repo_name: repoName,
           vulnerabilities: report.vulnerabilities,
