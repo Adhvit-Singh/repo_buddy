@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.rate_limit import limiter
+from app.config import FRONTEND_URL
 from app.auth.github import router as github_auth
 from app.api.repos import router as repo_api
 from app.api.webhooks import router as webhook_api
@@ -45,7 +46,8 @@ async def startup_event():
 
 _DEV_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _extra = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-_allowed_origins = list(dict.fromkeys(_DEV_ORIGINS + _extra))  # dedup, preserve order
+_frontend = [FRONTEND_URL.rstrip("/")] if FRONTEND_URL else []
+_allowed_origins = list(dict.fromkeys(_DEV_ORIGINS + _frontend + _extra))  # dedup, preserve order
 
 app.add_middleware(
     CORSMiddleware,
