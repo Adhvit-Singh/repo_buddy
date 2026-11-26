@@ -1,4 +1,11 @@
 import os
+import sys
+
+# Log lines must never crash a request: on Windows consoles (cp1252) printing
+# a non-ASCII character raises UnicodeEncodeError, which once failed whole scans.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="backslashreplace")
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler

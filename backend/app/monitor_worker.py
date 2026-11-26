@@ -100,7 +100,7 @@ async def monitor_tracked_repos():
                 try:
                     scan = create_scan(repo["id"], scan_type="full")
                     enqueue_scan(scan["id"], github_url, process_full_scan)
-                    print(f"MONITOR: queued {repo.get('full_name') or github_url} → scan {scan['id']}")
+                    print(f"MONITOR: queued {repo.get('full_name') or github_url} -> scan {scan['id']}")
                 except Exception as enq_err:
                     print(f"MONITOR: failed to queue {github_url}: {enq_err}")
         except Exception as e:
