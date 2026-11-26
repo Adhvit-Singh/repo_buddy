@@ -152,7 +152,7 @@ async def _handle_push(payload: dict):
         commit_sha,
     )
 
-    print(f"WEBHOOK: Push to {repo_url} ({len(changed_files)} files changed) → diff scan {scan['id']}")
+    print(f"WEBHOOK: Push to {repo_url} ({len(changed_files)} files changed) -> diff scan {scan['id']}")
 
     return {
         "status": "scanning",
