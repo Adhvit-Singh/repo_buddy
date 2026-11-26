@@ -1,27 +1,28 @@
 """
 repo_buddy — GitHub OAuth Authentication
 
-After the OAuth callback we set TWO surfaces for the token:
+Flow:
+  1. /login sets a random `state` in a short-lived httpOnly cookie and
+     redirects to GitHub (state protects against login CSRF).
+  2. /callback checks `state`, exchanges GitHub's code for an access token,
+     sets the httpOnly `gh_token` cookie, and redirects to the frontend with a
+     one-time `handoff` code — never the token itself, so it can't leak via
+     browser history, server logs or Referer headers.
+  3. The frontend POSTs the handoff code to /exchange (valid once, 60 s) and
+     gets the token back in the response body.
 
-  1. An httpOnly Secure SameSite=Lax cookie ("gh_token") — the secure
-     primary credential. Cannot be read by JavaScript (XSS-safe).
-  2. The existing query-param redirect (?access_token=...) — kept for
-     backward compatibility with the current frontend. The frontend can
-     migrate to using the cookie + /me endpoint at its own pace.
-
-The /me endpoint accepts either:
-  - the gh_token cookie (preferred)
-  - an Authorization: Bearer <token> header (legacy path)
-
-Cookie domain follows BACKEND_URL when set; otherwise host-only. In
-production over HTTPS the Secure flag is added automatically.
+/me accepts the gh_token cookie or an `Authorization: Bearer` header.
 """
 import os
+import secrets
+import threading
+import time
 from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse, JSONResponse
+from pydantic import BaseModel
 import httpx
 
 from app.config import (
@@ -35,6 +36,31 @@ router = APIRouter()
 
 COOKIE_NAME = "gh_token"
 COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+STATE_COOKIE = "oauth_state"
+HANDOFF_TTL_SECONDS = 60
+
+# One-time handoff codes: code -> (access_token, expires_at). In-memory is
+# fine for a single backend instance; codes live for 60 seconds.
+_handoffs: dict[str, tuple[str, float]] = {}
+_handoff_lock = threading.Lock()
+
+
+def create_handoff(token: str) -> str:
+    code = secrets.token_urlsafe(32)
+    now = time.time()
+    with _handoff_lock:
+        for k in [k for k, (_, exp) in _handoffs.items() if exp < now]:
+            del _handoffs[k]
+        _handoffs[code] = (token, now + HANDOFF_TTL_SECONDS)
+    return code
+
+
+def redeem_handoff(code: str) -> Optional[str]:
+    with _handoff_lock:
+        entry = _handoffs.pop(code, None)
+    if not entry or entry[1] < time.time():
+        return None
+    return entry[0]
 
 
 def _is_secure() -> bool:
@@ -85,27 +111,32 @@ def github_login():
             detail="GitHub OAuth not configured. Set GITHUB_CLIENT_ID in .env",
         )
 
+    state = secrets.token_urlsafe(24)
     callback_url = f"{BACKEND_URL}/auth/github/callback"
     url = (
         "https://github.com/login/oauth/authorize"
         f"?client_id={GITHUB_CLIENT_ID}"
         f"&redirect_uri={callback_url}"
         f"&scope=repo read:user user:email"
+        f"&state={state}"
     )
-    return RedirectResponse(url)
+    response = RedirectResponse(url)
+    response.set_cookie(
+        STATE_COOKIE, state, max_age=600, httponly=True,
+        secure=_is_secure(), samesite="lax", path="/auth/github",
+    )
+    return response
 
 
 @router.get("/callback")
-async def github_callback(code: str):
-    """
-    Exchange GitHub auth code for access token. Set httpOnly cookie AND
-    redirect to the frontend callback with the token in the query string
-    (legacy path) so existing client code keeps working.
-    """
+async def github_callback(request: Request, code: str, state: str = ""):
+    """Verify state, exchange GitHub's code for a token, hand off via one-time code."""
     if not GITHUB_CLIENT_SECRET:
-        return RedirectResponse(
-            f"{FRONTEND_URL}/auth/callback?error=server_not_configured"
-        )
+        return RedirectResponse(f"{FRONTEND_URL}/auth/callback?error=server_not_configured")
+
+    expected = request.cookies.get(STATE_COOKIE)
+    if not expected or not secrets.compare_digest(expected, state):
+        return RedirectResponse(f"{FRONTEND_URL}/auth/callback?error=invalid_state")
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_res = await client.post(
@@ -118,21 +149,27 @@ async def github_callback(code: str):
             },
         )
 
-    data = token_res.json()
-    access_token = data.get("access_token")
-
+    access_token = token_res.json().get("access_token")
     if not access_token:
-        error = data.get("error", "unknown_error")
-        desc = data.get("error_description", "")
-        return RedirectResponse(
-            f"{FRONTEND_URL}/auth/callback?error={error}&error_description={desc}"
-        )
+        return RedirectResponse(f"{FRONTEND_URL}/auth/callback?error=token_exchange_failed")
 
-    redirect = RedirectResponse(
-        f"{FRONTEND_URL}/auth/callback?access_token={access_token}"
-    )
+    redirect = RedirectResponse(f"{FRONTEND_URL}/auth/callback?handoff={create_handoff(access_token)}")
     _set_token_cookie(redirect, access_token)
+    redirect.delete_cookie(STATE_COOKIE, path="/auth/github")
     return redirect
+
+
+class HandoffRequest(BaseModel):
+    handoff: str
+
+
+@router.post("/exchange")
+async def exchange_handoff(payload: HandoffRequest):
+    """Trade a one-time handoff code for the access token (single use, 60 s)."""
+    token = redeem_handoff(payload.handoff)
+    if not token:
+        raise HTTPException(status_code=400, detail="Login link expired. Please sign in again.")
+    return {"access_token": token}
 
 
 @router.get("/me")
@@ -140,8 +177,8 @@ async def github_me(request: Request):
     """
     Return the currently signed-in GitHub user given the cookie or
     Authorization header. Used by the frontend instead of trusting a
-    localStorage token blindly. Also upserts the user row so plan
-    lookups work.
+    localStorage token blindly. Also upserts the user row so repo
+    tracking works.
     """
     token = _read_token(request)
     if not token:
@@ -162,28 +199,24 @@ async def github_me(request: Request):
 
     gh = user_res.json()
 
-    # Upsert into our DB so /api/payments/plan + repo tracking work.
-    try:
-        from app.database import upsert_user, get_user_by_github_id
+    # Upsert into our DB so repo tracking works.
+    from app.database import upsert_user
 
-        user_row = upsert_user(
-            github_id=gh["id"],
-            login=gh.get("login"),
-            name=gh.get("name"),
-            avatar_url=gh.get("avatar_url"),
-            email=gh.get("email"),
-        )
-        plan = user_row.get("plan", "free")
-    except Exception:
-        plan = "free"
+    user_row = upsert_user(
+        github_id=gh["id"],
+        login=gh.get("login"),
+        name=gh.get("name"),
+        avatar_url=gh.get("avatar_url"),
+        email=gh.get("email"),
+    )
 
     return {
-        "id": gh.get("id"),
+        "id": user_row.get("id"),
+        "github_id": gh.get("id"),
         "login": gh.get("login"),
         "name": gh.get("name"),
         "email": gh.get("email"),
         "avatar_url": gh.get("avatar_url"),
-        "plan": plan,
     }
 
 
