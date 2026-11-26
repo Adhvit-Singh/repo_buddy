@@ -31,6 +31,18 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - run: python -m pytest -q
 
+  docker:
+    name: Backend Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t repo-buddy-backend backend
+      - name: Smoke test the container
+        run: |
+          docker run -d --name api -p 7860:7860 repo-buddy-backend
+          for i in $(seq 1 30); do curl -fs localhost:7860/health && exit 0; sleep 2; done
+          docker logs api; exit 1
+
   frontend:
     name: Frontend (lint, test, build)
     runs-on: ubuntu-latest
