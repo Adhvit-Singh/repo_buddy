@@ -19,9 +19,9 @@ interface Props {
 
 const STEPS = [
   "Cloning your repo",
-  "Reading your code (Sonnet 4.6)",
-  "Attacking your live URL (14 checks)",
-  "Comparing to 10,000+ AI-built apps",
+  "Splitting the code into chunks",
+  "Embedding and indexing (ChromaDB)",
+  "AI security review of the most relevant code",
   "Writing your report",
 ];
 

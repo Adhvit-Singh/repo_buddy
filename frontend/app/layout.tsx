@@ -16,9 +16,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "repo_buddy — live red-team for AI-built apps",
+  title: "repo_buddy — AI security review for AI-built apps",
   description:
-    "Paste your repo. We attack it. We prove what's broken. We open the PR that fixes it. Built for founders shipping with Lovable, Bolt and Cursor.",
+    "Paste a GitHub repo. repo_buddy reads it with retrieval-augmented AI, explains it in plain English, flags security issues and can open a fix PR.",
   keywords: [
     "AI app security",
     "Lovable security scanner",
@@ -30,9 +30,9 @@ export const metadata: Metadata = {
     "vibe coding security",
   ],
   openGraph: {
-    title: "repo_buddy — live red-team for AI-built apps",
+    title: "repo_buddy — AI security review for AI-built apps",
     description:
-      "Paste your repo. We attack it. We prove what's broken. We open the PR.",
+      "Paste a GitHub repo, get a plain-English security report and a fix PR.",
     type: "website",
   },
 };
