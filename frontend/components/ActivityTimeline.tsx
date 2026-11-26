@@ -28,7 +28,7 @@ export default function ActivityTimeline({ history }: ActivityTimelineProps) {
       />
 
       <div className="flex flex-col gap-8 relative">
-        {sortedHistory.map((item, index) => {
+        {sortedHistory.map((item) => {
           const isCritical = item.critical_count > 0;
           const isDiff = item.scan_type === "diff";
           const Icon = isCritical ? ShieldAlert : isDiff ? GitCommit : GitBranch;
