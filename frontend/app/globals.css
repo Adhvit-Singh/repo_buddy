@@ -503,7 +503,6 @@
   .proof-grid { grid-template-columns: 1fr !important; }
   .steps-grid { grid-template-columns: 1fr !important; }
   .features-grid { grid-template-columns: repeat(2, 1fr) !important; }
-  .pricing-grid { grid-template-columns: 1fr !important; }
   .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .repo-grid { grid-template-columns: 1fr !important; }
 }

@@ -98,31 +98,6 @@ def get_user_by_id(user_id: str) -> dict | None:
         return dict(row) if row else None
 
 
-def update_user_plan(
-    user_id: str,
-    plan: str,
-    stripe_customer_id: str | None = None,
-    razorpay_sub_id: str | None = None,
-) -> None:
-    with get_db() as db:
-        if stripe_customer_id:
-            db.execute(
-                "UPDATE users SET plan=?, stripe_customer_id=? WHERE id=?",
-                (plan, stripe_customer_id, user_id),
-            )
-        elif razorpay_sub_id:
-            db.execute(
-                "UPDATE users SET plan=?, razorpay_sub_id=? WHERE id=?",
-                (plan, razorpay_sub_id, user_id),
-            )
-        else:
-            db.execute("UPDATE users SET plan=? WHERE id=?", (plan, user_id))
-
-
-# ═══════════════════════════════════════════════
-# REPO OPERATIONS
-# ═══════════════════════════════════════════════
-
 def track_repo(user_id: str | None, github_url: str, name: str, full_name: str) -> dict:
     with get_db() as db:
         if user_id is None:

@@ -81,19 +81,6 @@ export default function Footer() {
             >
               GitHub
             </a>
-            <Link
-              href="/#pricing"
-              style={{
-                fontSize: "0.8125rem",
-                color: "var(--text-tertiary)",
-                textDecoration: "none",
-                transition: "color 0.15s",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-secondary)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-tertiary)")}
-            >
-              Pricing
-            </Link>
           </div>
 
           {/* Copyright */}
