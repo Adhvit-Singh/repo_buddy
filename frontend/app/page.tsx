@@ -136,9 +136,9 @@ export default function LandingPage() {
   const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const exampleRepos = [
-    "vercel/next.js",
-    "tiangolo/fastapi",
-    "supabase/supabase",
+    "Adhvit-Singh/Investeeyy",
+    "pallets/itsdangerous",
+    "octocat/Spoon-Knife",
   ];
 
   return (
