@@ -1,4 +1,4 @@
-import json
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -17,19 +17,15 @@ class IdeaResponse(BaseModel):
 
 @router.post("/generate", response_model=IdeaResponse)
 async def generate_app_blueprint(payload: IdeaRequest):
-    from app.config import GEMINI_API_KEY
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is missing.")
+    from app.services.llm_router import active_provider, llm_json
+    if active_provider() == "none":
+        raise HTTPException(status_code=503, detail="AI features are unavailable: no LLM API key configured.")
 
-    from google import genai
-    from google.genai import types
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    
     complexity_prompt = "Keep everything as plain-English and simple as possible. Assume the user has never written code." if payload.mode == "simple" else "Provide a detailed, highly scalable architectural breakdown suitable for a senior developer."
 
     prompt = f"""You are the world's best CTO. A founder has come to you with an idea.
-Your job is to translate their idea into an actionable blueprint for an AI code builder (like Antigravity, Bolt, or Lovable).
+Your job is to translate their idea into an actionable blueprint for an AI code builder (like Cursor, Bolt, or Lovable).
 
 THE IDEA:
 {payload.idea}
@@ -40,7 +36,7 @@ You must return a JSON object with the following structure:
 {{
   "architecture": "A brief explanation of how the app will work.",
   "tech_stack": ["React", "Tailwind", "Supabase", etc...],
-  "mega_prompt": "A highly optimized, copy-pasteable prompt that the user can feed into Antigravity or Bolt to generate the MVP perfectly on the first try.",
+  "mega_prompt": "A highly optimized, copy-pasteable prompt that the user can feed into an AI code builder to generate the MVP perfectly on the first try.",
   "github_guide": [
      {{"step": "Create a GitHub account", "description": "Go to github.com and sign up."}},
      {{"step": "Create a new repository", "description": "Click the + button and select New Repository."}},
@@ -49,16 +45,7 @@ You must return a JSON object with the following structure:
 }}
 """
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            ),
-        )
-        data = json.loads(response.text)
-        return data
-    except Exception as e:
-        print(f"Idea Generation Error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate blueprint. Please try again.")
+    data = await asyncio.to_thread(llm_json, prompt, "deep", 4096)
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=502, detail="Failed to generate blueprint. Please try again.")
+    return data

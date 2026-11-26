@@ -1,4 +1,4 @@
-import json
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict
@@ -12,7 +12,7 @@ class BlueprintRequest(BaseModel):
 async def suggest_blueprints(payload: BlueprintRequest):
     """
     Analyzes a tracked repository's latest tech stack and suggests
-    3 logical next features to build, along with the exact Antigravity prompt.
+    3 logical next features to build, along with a ready-to-paste prompt for an AI code builder.
     """
     from app.database import get_db, get_scan
     
@@ -36,20 +36,16 @@ async def suggest_blueprints(payload: BlueprintRequest):
     # Extract just the tool names
     stack_names = [t.get("name") for t in tech_stack] if tech_stack else ["Unknown"]
 
-    from app.config import GEMINI_API_KEY
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is missing.")
+    from app.services.llm_router import active_provider, llm_json
+    if active_provider() == "none":
+        raise HTTPException(status_code=503, detail="AI features are unavailable: no LLM API key configured.")
 
-    from google import genai
-    from google.genai import types
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    
     prompt = f"""You are the world's best CTO. A non-technical founder has built an app with the following tech stack:
 {', '.join(stack_names)}
 
 Suggest EXACTLY 3 logical next features they should add to their app to make it more professional or robust.
-For each feature, provide the exact, copy-pasteable "Mega-Prompt" they should give to their AI code builder (like Antigravity or Bolt) to build it.
+For each feature, provide the exact, copy-pasteable "Mega-Prompt" they should give to their AI code builder (like Cursor, Bolt or Lovable) to build it.
 
 Return a JSON array of objects with this structure:
 [
@@ -61,16 +57,7 @@ Return a JSON array of objects with this structure:
 ]
 """
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            ),
-        )
-        suggestions = json.loads(response.text)
-        return {"suggestions": suggestions}
-    except Exception as e:
-        print(f"Blueprint Error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate blueprints.")
+    suggestions = await asyncio.to_thread(llm_json, prompt, "tick", 4096)
+    if not isinstance(suggestions, list):
+        raise HTTPException(status_code=502, detail="Failed to generate blueprints. Please try again.")
+    return {"suggestions": suggestions}
