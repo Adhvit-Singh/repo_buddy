@@ -34,7 +34,11 @@ def parse_github_repo(value: str) -> tuple[str, str]:
         parsed = urlparse(value)
         if parsed.scheme != "https" or parsed.hostname not in ("github.com", "www.github.com"):
             raise UnsafeURLError("Only public https://github.com repositories can be scanned.")
-        if parsed.username or parsed.password or parsed.port:
+        try:
+            has_port = parsed.port is not None
+        except ValueError:
+            has_port = True
+        if parsed.username or parsed.password or has_port:
             raise UnsafeURLError("Repository URLs can't contain credentials or ports.")
         path = parsed.path
     else:
@@ -72,11 +76,15 @@ def validate_public_http_url(value: str) -> str:
         value = "https://" + value
 
     parsed = urlparse(value)
+    try:
+        port = parsed.port  # raises ValueError for junk like "https://javascript:alert(1)"
+    except ValueError:
+        raise UnsafeURLError("That doesn't look like a valid URL.")
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise UnsafeURLError("Only http:// or https:// URLs can be probed.")
     if parsed.username or parsed.password:
         raise UnsafeURLError("URLs can't contain credentials.")
-    if parsed.port not in (None, 80, 443):
+    if port not in (None, 80, 443):
         raise UnsafeURLError("Only standard web ports (80/443) can be probed.")
 
     host = parsed.hostname
