@@ -1,170 +1,107 @@
-import os
-import time
-import json
+"""
+repo_buddy — Auto-Fix
+
+Given scan findings, asks the LLM for full replacement contents of the
+affected files, then opens a pull request on the user's repo via the GitHub
+Git Data API (blob → tree → commit → branch → PR).
+
+Uses only the caller's own GitHub token, so PRs can only be opened on repos
+that user can already write to.
+"""
 import uuid
 from datetime import datetime
 
-def generate_and_apply_fix(repo_name: str, vulnerabilities: list, user_token: str | None = None) -> str:
-    """
-    Takes a repository name and a list of vulnerabilities.
-    Uses Gemini to generate the full replacement code, and GitHub API to push it and open a PR.
-    Returns the URL of the generated Pull Request.
-    """
-    # Normalize: accept full URL or owner/repo
-    if repo_name.startswith("https://github.com/"):
-        repo_name = repo_name[len("https://github.com/"):].strip("/").removesuffix(".git")
-    repo_name = repo_name.strip("/").removesuffix(".git")
+from app.services.llm_router import active_provider, llm_json
+from app.services.url_safety import parse_github_repo
 
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    # Prefer user token (has write access to their own repos) over server env token
-    github_token = user_token or os.getenv("GITHUB_TOKEN")
 
-    if not github_token:
-        print("WARN: No GitHub token provided. Cannot push PR. Returning mock PR URL.")
-        time.sleep(2)
-        return f"https://github.com/{repo_name}/pull/mock-no-token"
+class AutoFixError(Exception):
+    """Raised with a user-facing message when a fix PR can't be created."""
 
-    if not gemini_key:
-        print("WARN: Missing GEMINI_API_KEY. Cannot generate fix. Returning mock PR URL.")
-        return f"https://github.com/{repo_name}/pull/mock-no-token"
+    def __init__(self, message: str, status_code: int = 400):
+        super().__init__(message)
+        self.status_code = status_code
 
-    print(f"Generating fixes for {repo_name} using Gemini...")
-    
-    # --- 1. Fetch File Contents ---
-    try:
-        from github import Github, Auth, InputGitTreeElement
-    except ImportError:
-        print("WARN: PyGithub not installed. Run `pip install PyGithub`. Returning mock PR URL.")
-        return f"https://github.com/{repo_name}/pull/mock-missing-lib"
 
-    auth = Auth.Token(github_token)
-    gh = Github(auth=auth)
-    
-    try:
-        repo = gh.get_repo(repo_name)
-    except Exception as e:
-        print(f"ERROR: Could not access repo {repo_name}: {e}")
-        return f"https://github.com/{repo_name}/pull/error-repo-access"
-
-    # Gather affected files to provide context to the LLM
-    affected_files = set([v.get('file') for v in vulnerabilities if v.get('file')])
-    file_contents = {}
-    for file_path in affected_files:
-        try:
-            content = repo.get_contents(file_path).decoded_content.decode('utf-8')
-            file_contents[file_path] = content
-        except Exception as e:
-            print(f"WARN: Could not fetch {file_path}: {e}")
-            pass
-
-    # --- 2. Ask Gemini for Replacement Code ---
-    from google import genai
-    from google.genai import types
-    client = genai.Client(api_key=gemini_key)
-
-    vuln_context = "\n".join([f"- {v.get('title')} in {v.get('file')}: {v.get('description')}" for v in vulnerabilities])
-    
-    files_context = "\n\n".join([f"=== FILE: {path} ===\n{content}" for path, content in file_contents.items()])
-
-    prompt = f"""You are an AI Auto-Fix Engine. I have the following vulnerabilities in my repository {repo_name}:
+def _build_prompt(repo_name: str, vulnerabilities: list, file_contents: dict) -> str:
+    vuln_context = "\n".join(
+        f"- {v.get('title')} in {v.get('file')}: {v.get('description')}" for v in vulnerabilities
+    )
+    files_context = "\n\n".join(f"=== FILE: {p} ===\n{c}" for p, c in file_contents.items())
+    return f"""You are an automated code-fix engine. Repository {repo_name} has these findings:
 {vuln_context}
 
-Here are the current contents of the affected files:
+Current contents of the affected files:
 {files_context}
 
-Fix the vulnerabilities. Return a JSON object where the keys are the file paths, and the values are the COMPLETE, FULL replacement code for those files.
-Do not use diffs. Just return the new file content.
-Ensure your fix addresses the vulnerabilities but doesn't break other functionality.
-IMPORTANT: Return ONLY valid JSON."""
+Fix the findings without breaking other functionality. Return ONE JSON object whose
+keys are file paths (only from the files above) and whose values are the COMPLETE
+replacement contents of those files. No diffs, no commentary."""
 
-    # Model fallback chain
-    model_candidates = [
-        'gemini-2.5-flash',
-        'gemini-2.5-flash-lite',
-        'gemini-2.0-flash',
-        'gemini-2.5-pro',
-    ]
 
-    response = None
-    last_err = None
-    used_model = None
+def generate_and_apply_fix(repo_name: str, vulnerabilities: list, user_token: str | None) -> str:
+    """Create a fix PR and return its URL. Raises AutoFixError on any failure."""
+    owner, name = parse_github_repo(repo_name)
+    full_name = f"{owner}/{name}"
 
-    for model_name in model_candidates:
+    if not user_token:
+        raise AutoFixError("Sign in with GitHub to open a fix PR on your repository.", 401)
+    if active_provider() == "none":
+        raise AutoFixError("Auto-fix is unavailable: no LLM API key is configured on the server.", 503)
+    if not vulnerabilities:
+        raise AutoFixError("No findings were provided to fix.")
+
+    from github import Auth, Github, GithubException, InputGitTreeElement
+
+    gh = Github(auth=Auth.Token(user_token))
+    try:
+        repo = gh.get_repo(full_name)
+    except GithubException:
+        raise AutoFixError(f"Can't access {full_name} with your GitHub account.", 403)
+
+    affected = {v.get("file") for v in vulnerabilities if v.get("file")}
+    file_contents = {}
+    for path in affected:
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                ),
-            )
-            used_model = model_name
-            print(f"INFO: Auto-fix generated using {model_name}")
-            break
+            file_contents[path] = repo.get_contents(path).decoded_content.decode("utf-8")
         except Exception as e:
-            last_err = e
-            print(f"WARN: Gemini auto-fix call to {model_name} failed: {e}")
-            continue
+            print(f"WARN: Could not fetch {path}: {e}")
+    if not file_contents:
+        raise AutoFixError("None of the affected files could be read from the repository.")
 
-    if response is None:
-        print(f"ERROR: All Gemini models failed for auto-fix (last error: {last_err})")
-        return f"https://github.com/{repo_name}/pull/error-all-models-failed"
+    fixed_files = llm_json(_build_prompt(full_name, vulnerabilities, file_contents), pass_type="deep")
+    if not isinstance(fixed_files, dict) or not fixed_files:
+        raise AutoFixError("The AI model didn't return a usable fix. Please try again.", 502)
 
-    try:
-        fixed_files = json.loads(response.text)
-    except json.JSONDecodeError:
-        print("ERROR: Failed to parse Gemini response as JSON.")
-        return f"https://github.com/{repo_name}/pull/error-json-parse"
-
+    # Only allow writes to files we actually sent — never let the model pick new paths.
+    fixed_files = {p: c for p, c in fixed_files.items() if p in file_contents and isinstance(c, str)}
     if not fixed_files:
-        print("WARN: Gemini returned empty fixes.")
-        return f"https://github.com/{repo_name}/pull/error-no-fixes"
+        raise AutoFixError("The AI model's fix didn't touch any of the affected files.", 502)
 
-    # --- 3. Create GitHub Branch & PR ---
     try:
-        # Get default branch
-        default_branch = repo.default_branch
-        ref = repo.get_git_ref(f"heads/{default_branch}")
-        base_commit = repo.get_commit(ref.object.sha)
-        base_tree = repo.get_git_tree(ref.object.sha)
-        
-        # Create new branch
-        branch_name = f"repo_buddy/autofix-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}"
-        repo.create_git_ref(ref=f"refs/heads/{branch_name}", sha=ref.object.sha)
-        
-        # Create Tree
-        tree_elements = []
-        for path, new_content in fixed_files.items():
-            blob = repo.create_git_blob(new_content, "utf-8")
-            element = InputGitTreeElement(path=path, mode="100644", type="blob", sha=blob.sha)
-            tree_elements.append(element)
-            
-        new_tree = repo.create_git_tree(tree_elements, base_tree)
-        
-        # Create Commit
-        commit_message = f"🛡️ repo_buddy Auto-Fix: Address {len(vulnerabilities)} security issues\n\nGenerated by Gemini ({used_model})."
-        new_commit = repo.create_git_commit(commit_message, new_tree, [base_commit.commit])
-        
-        # Update Branch Ref
-        repo.get_git_ref(f"heads/{branch_name}").edit(new_commit.sha)
-        
-        # Create PR
-        pr_title = "🛡️ repo_buddy Security Auto-Fix"
-        pr_body = "This PR was automatically generated by **repo_buddy** to fix the following security vulnerabilities:\n\n"
-        for v in vulnerabilities:
-            pr_body += f"- **{v.get('title')}** in `{v.get('file')}`: {v.get('description')}\n"
-        pr_body += "\n---\n*Please review the changes carefully before merging. Generated by Gemini.*"
-        
-        pr = repo.create_pull(
-            title=pr_title,
-            body=pr_body,
-            head=branch_name,
-            base=default_branch
-        )
-        
-        print(f"SUCCESS: Auto-Fix PR created! {pr.html_url}")
-        return pr.html_url
+        base_branch = repo.default_branch
+        ref = repo.get_git_ref(f"heads/{base_branch}")
+        base_commit = repo.get_git_commit(ref.object.sha)
+        branch = f"repo-buddy/autofix-{datetime.now():%Y%m%d%H%M%S}-{uuid.uuid4().hex[:6]}"
 
-    except Exception as e:
-        print(f"ERROR: GitHub PR creation failed: {e}")
-        return f"https://github.com/{repo_name}/pull/error-github-api"
+        elements = [
+            InputGitTreeElement(path=p, mode="100644", type="blob", sha=repo.create_git_blob(c, "utf-8").sha)
+            for p, c in fixed_files.items()
+        ]
+        tree = repo.create_git_tree(elements, repo.get_git_tree(ref.object.sha))
+        commit = repo.create_git_commit(
+            f"fix: address {len(vulnerabilities)} security findings (repo_buddy auto-fix)",
+            tree,
+            [base_commit],
+        )
+        repo.create_git_ref(ref=f"refs/heads/{branch}", sha=commit.sha)
+
+        body = "Automatically generated by **repo_buddy** to address:\n\n"
+        body += "".join(f"- **{v.get('title')}** in `{v.get('file')}`\n" for v in vulnerabilities)
+        body += "\n---\n*AI-generated — review carefully before merging.*"
+        pr = repo.create_pull(title="repo_buddy: security auto-fix", body=body, head=branch, base=base_branch)
+    except GithubException as e:
+        raise AutoFixError(f"GitHub refused the change: {e.data.get('message', e)}", 502)
+
+    print(f"SUCCESS: Auto-fix PR created: {pr.html_url}")
+    return pr.html_url

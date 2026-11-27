@@ -1,6 +1,6 @@
 "use client";
 
-import { Shield, LogOut, Zap } from "lucide-react";
+import { Shield, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,23 +8,10 @@ import Link from "next/link";
 interface DashboardHeaderProps {
   username?: string;
   avatarUrl?: string;
-  plan?: string;
   loading?: boolean;
 }
 
-const PLAN_LABEL: Record<string, string> = {
-  free: "Free",
-  starter: "Starter",
-  builder: "Builder",
-};
-
-const PLAN_COLOR: Record<string, string> = {
-  free: "var(--text-tertiary)",
-  starter: "#3b82f6",
-  builder: "var(--green)",
-};
-
-export default function DashboardHeader({ username, avatarUrl, plan = "free", loading }: DashboardHeaderProps) {
+export default function DashboardHeader({ username, avatarUrl, loading }: DashboardHeaderProps) {
   const router = useRouter();
 
   const handleSignOut = () => {
@@ -32,9 +19,6 @@ export default function DashboardHeader({ username, avatarUrl, plan = "free", lo
     localStorage.removeItem("gh_user");
     router.push("/");
   };
-
-  const planColor = PLAN_COLOR[plan] || PLAN_COLOR.free;
-  const planLabel = PLAN_LABEL[plan] || "Free";
 
   return (
     <header
@@ -109,40 +93,8 @@ export default function DashboardHeader({ username, avatarUrl, plan = "free", lo
           </nav>
         </div>
 
-        {/* Right: plan + user */}
+        {/* Right: user */}
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {!loading && (
-            <>
-              {/* Plan badge */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  background: `${planColor}18`,
-                  border: `1px solid ${planColor}40`,
-                  borderRadius: "999px",
-                  padding: "3px 10px",
-                }}
-              >
-                <Zap size={10} color={planColor} strokeWidth={2.5} />
-                <span style={{ fontSize: "0.7rem", fontWeight: 700, color: planColor, letterSpacing: "0.04em" }}>
-                  {planLabel.toUpperCase()}
-                </span>
-              </div>
-
-              {plan === "free" && (
-                <Link
-                  href="/pricing"
-                  className="btn btn-green"
-                  style={{ padding: "5px 12px", fontSize: "0.75rem" }}
-                >
-                  Upgrade
-                </Link>
-              )}
-            </>
-          )}
-
           {loading ? (
             <div style={{ width: "80px", height: "20px", background: "var(--surface-elevated)", borderRadius: "4px" }} />
           ) : username ? (

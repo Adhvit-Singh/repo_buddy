@@ -5,8 +5,7 @@ Async loop that periodically re-scans every repo with `is_monitoring=1`
 whose `last_scan_at` is older than MONITOR_REFRESH_HOURS. The webhook
 path already covers push-driven diff scans; this worker is the safety
 net for repos whose webhooks were never installed (or fired, or were
-silently dropped) — so users on the Starter/Builder plans still get the
-"live continuous red-team" promise.
+silently dropped).
 
 Design choices:
 - Runs in the same asyncio loop as `uptime_worker` (started from the
@@ -17,8 +16,8 @@ Design choices:
   (3 workers).
 - Defers to `_active_scans` dedup in `queue.py` — if a webhook already
   kicked a scan for the same URL, we skip without double-queueing.
-- Skips repos owned by users on the `free` plan (continuous monitoring
-  is a paid feature; advertised on the pricing page).
+- Only repos tracked by a signed-in user are monitored (anonymous
+  one-off scans are never re-run), which keeps LLM usage bounded.
 """
 
 import asyncio
@@ -41,7 +40,6 @@ MONITOR_REFRESH_HOURS = int(os.getenv("MONITOR_REFRESH_HOURS", "24"))
 MONITOR_BATCH_SIZE = int(os.getenv("MONITOR_BATCH_SIZE", "10"))
 
 
-_PAID_PLANS = {"starter", "builder", "pro"}
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -59,16 +57,15 @@ def _parse_dt(value: str | None) -> datetime | None:
 
 def _select_due_repos() -> list[dict]:
     """
-    Return monitored repos whose owner is on a paid plan and whose
-    last scan is older than the refresh window (or never scanned).
+    Return monitored repos owned by a signed-in user whose last scan is
+    older than the refresh window (or never scanned).
     """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=MONITOR_REFRESH_HOURS)
     with get_db() as db:
         rows = db.execute(
-            """SELECT r.id, r.github_url, r.full_name, r.last_scan_at, u.plan
+            """SELECT r.id, r.github_url, r.full_name, r.last_scan_at
                  FROM repos r
-                 LEFT JOIN users u ON u.id = r.user_id
-                WHERE r.is_monitoring = 1
+                WHERE r.is_monitoring = 1 AND r.user_id IS NOT NULL
                 ORDER BY (r.last_scan_at IS NULL) DESC, r.last_scan_at ASC
                 LIMIT ?""",
             (MONITOR_BATCH_SIZE * 4,),  # over-fetch, we'll filter
@@ -76,9 +73,6 @@ def _select_due_repos() -> list[dict]:
 
     due: list[dict] = []
     for row in rows:
-        plan = (row["plan"] or "free").lower()
-        if plan not in _PAID_PLANS:
-            continue
         last = _parse_dt(row["last_scan_at"])
         if last is not None and last > cutoff:
             continue
@@ -106,7 +100,7 @@ async def monitor_tracked_repos():
                 try:
                     scan = create_scan(repo["id"], scan_type="full")
                     enqueue_scan(scan["id"], github_url, process_full_scan)
-                    print(f"MONITOR: queued {repo.get('full_name') or github_url} → scan {scan['id']}")
+                    print(f"MONITOR: queued {repo.get('full_name') or github_url} -> scan {scan['id']}")
                 except Exception as enq_err:
                     print(f"MONITOR: failed to queue {github_url}: {enq_err}")
         except Exception as e:

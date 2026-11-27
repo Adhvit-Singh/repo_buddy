@@ -1,20 +1,25 @@
 import os
+import sys
+
+# Log lines must never crash a request: on Windows consoles (cp1252) printing
+# a non-ASCII character raises UnicodeEncodeError, which once failed whole scans.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="backslashreplace")
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from app.rate_limit import limiter
+from app.config import FRONTEND_URL
 from app.auth.github import router as github_auth
 from app.api.repos import router as repo_api
 from app.api.webhooks import router as webhook_api
 from app.api.public import router as public_api
-from app.api.stripe import router as stripe_api
 from app.api.idea_to_app import router as idea_api
 from app.api.blueprints import router as blueprints_api
 from app.api.probe import router as probe_api
-from app.api.payments import router as payments_api
 
-limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="repo_buddy Backend")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -48,7 +53,8 @@ async def startup_event():
 
 _DEV_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 _extra = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
-_allowed_origins = list(dict.fromkeys(_DEV_ORIGINS + _extra))  # dedup, preserve order
+_frontend = [FRONTEND_URL.rstrip("/")] if FRONTEND_URL else []
+_allowed_origins = list(dict.fromkeys(_DEV_ORIGINS + _frontend + _extra))  # dedup, preserve order
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,11 +68,9 @@ app.include_router(github_auth, prefix="/auth/github")
 app.include_router(repo_api, prefix="/api/repos")
 app.include_router(webhook_api, prefix="/api/webhooks")
 app.include_router(public_api, prefix="/api/public")
-app.include_router(stripe_api, prefix="/api/stripe")
 app.include_router(idea_api, prefix="/api/idea")
 app.include_router(blueprints_api, prefix="/api/blueprints")
 app.include_router(probe_api, prefix="/api/probe")
-app.include_router(payments_api, prefix="/api/payments")
 
 
 @app.get("/")
