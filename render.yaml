@@ -1,0 +1,23 @@
+# Render Blueprint — deploys the FastAPI backend from backend/Dockerfile on the free plan.
+# Render dashboard → New → Blueprint → pick this repo. Secrets marked `sync: false`
+# are typed into the dashboard once, never committed.
+services:
+  - type: web
+    name: repo-buddy-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: BACKEND_URL
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false

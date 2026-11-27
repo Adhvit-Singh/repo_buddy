@@ -59,7 +59,7 @@ flowchart LR
 | AI | Gemini (generation + `gemini-embedding-001`), optional Anthropic Claude, ChromaDB |
 | Data | SQLite (WAL mode) |
 | Quality | pytest (80 tests), Vitest + Testing Library, ESLint, GitHub Actions CI |
-| Deploy | Docker → Hugging Face Spaces (backend), Netlify (frontend) |
+| Deploy | Docker on Render (backend), Netlify (frontend) — both free tiers |
 
 ## Run it locally
 
@@ -97,7 +97,7 @@ The backend tests need no network or API keys. They mock DNS, the LLM and GitHub
 
 ## Deploy
 
-Free tiers only: backend as a Docker Space on Hugging Face, frontend on Netlify. Step-by-step instructions are in [docs/DEPLOY.md](docs/DEPLOY.md).
+Free tiers only: backend as a Docker web service on Render (`render.yaml` blueprint), frontend on Netlify. Step-by-step instructions are in [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Limitations
 
