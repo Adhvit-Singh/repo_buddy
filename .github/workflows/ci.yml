@@ -39,8 +39,8 @@ jobs:
       - run: docker build -t repo-buddy-backend backend
       - name: Smoke test the container
         run: |
-          docker run -d --name api -p 7860:7860 repo-buddy-backend
-          for i in $(seq 1 30); do curl -fs localhost:7860/health && exit 0; sleep 2; done
+          docker run -d --name api -p 8000:8000 repo-buddy-backend
+          for i in $(seq 1 30); do curl -fs localhost:8000/health && exit 0; sleep 2; done
           docker logs api; exit 1
 
   frontend:
