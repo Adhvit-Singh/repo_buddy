@@ -8,3 +8,7 @@
 [build.environment]
   NODE_VERSION = "22"
   NEXT_PUBLIC_API_URL = "https://repo-buddy-api.onrender.com"
+
+# Serve the Next.js app (SSR routes, images) with Netlify's official runtime
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
