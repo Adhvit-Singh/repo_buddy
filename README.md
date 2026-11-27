@@ -7,7 +7,8 @@
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB)
 ![Next.js 16](https://img.shields.io/badge/Next.js-16-black)
 
-<!-- Live demo: add the Netlify URL here once deployed (see docs/DEPLOY.md) -->
+**Live demo:** <https://repo-buddy.netlify.app> · API: <https://repo-buddy-api.onrender.com/docs>  
+<sub>Free-tier hosting: the API sleeps when idle, so the first request can take about a minute to wake it up.</sub>
 
 | Landing page | Scan verdict (real scan of `pallets/itsdangerous`) |
 |---|---|
