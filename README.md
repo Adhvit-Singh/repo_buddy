@@ -108,14 +108,20 @@ Free tiers only: backend as a Docker web service on Render (`render.yaml` bluepr
 - Findings are LLM-generated: useful for triage, not a replacement for a professional audit.
 - On the free Gemini tier, scans can be slow or fail when Google's models are overloaded.
 
-## Project history
+## My role / what I learned
 
-repo_buddy started as a solo project (under an earlier working name). In November 2026 it was overhauled:
-- moved to current Gemini models behind a single router (the original hard-coded models had been retired, which broke every scan)
-- replaced local PyTorch embeddings with the Gemini embedding API (the install went from several GB to about 460 MB)
-- fixed SSRF, unsafe-clone and token-in-URL issues
-- removed the payments layer
-- added the test suites, CI and deployment configs
+The idea came from watching friends ship apps with Cursor and Lovable without really knowing what was inside them. I wanted something where you paste a repo link and it tells you, in normal words, what's wrong and how to fix it. Getting that to work meant touching pretty much every layer: a Next.js frontend, a FastAPI backend, a RAG pipeline, a live HTTP scanner, the GitHub API, and finally deployment.
+
+What I actually learned from it:
+
+- **Code can break even when you don't touch it.** At one point every scan started failing because Google retired the Gemini models that were hard-coded. The worse part was that the app hid the failure and showed a fake demo report instead. Now model names come from config, and a failure shows a real error. I'm not writing a silent fallback like that again.
+- **How RAG works beyond the buzzword.** Chunking with overlap, embeddings, a vector database, top-k retrieval. The bug that taught me the most was that chunks were sent to the model without their file names, so it was basically guessing the line numbers. Adding a `### path (lines a-b)` header to every chunk fixed that.
+- **A security tool can have security bugs.** The live probe could be pointed at `localhost` or the cloud metadata IP (SSRF), and the GitHub token showed up in the URL after login. Fixing those taught me more about web security than any lecture did.
+- **Dependencies decide where you can deploy.** Swapping local PyTorch embeddings for an API took the install from several GB to around 460 MB. That's the only reason the backend fits on a free server.
+- **Tests find bugs you would never go looking for.** Writing the test suite turned up three real bugs. My favourite: a single "→" character in a log line crashed scans on Windows.
+- **Free hosting changes under you.** I planned to use Hugging Face Spaces, found out Docker Spaces are paid now, and moved the backend to Render.
+
+If I keep working on it, the next steps are moving the job queue to Redis so scans survive restarts, switching SQLite to Postgres, and making retrieval smarter so big repos don't miss files that never get picked.
 
 Planning notes from the original build are kept in [docs/notes](docs/notes).
 
