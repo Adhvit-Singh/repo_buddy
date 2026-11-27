@@ -14,25 +14,8 @@ from collections import Counter
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from app.database import get_repo_by_id, get_scan, get_scan_history, get_db, get_global_stats, get_user_by_id
-from app.services.paywall import gate_report
 
 router = APIRouter()
-
-
-def _resolve_plan(request: Request) -> str:
-    """
-    Best-effort plan resolution for the unauthenticated public endpoints.
-    Looks at the auth cookie's owner if present; otherwise free.
-    """
-    # If the user_id is passed via query, trust nothing — just return free.
-    # The cookie path is the only authenticated channel.
-    token = request.cookies.get("gh_token")
-    if not token:
-        return "free"
-    # Cheap path: we don't re-hit GitHub here. If you want plan info you
-    # call /api/auth/me which performs the upsert. Public report defaults to
-    # free for cookie-less viewers (shared links from non-signed-in viewers).
-    return "free"
 
 
 def _generate_badge_svg(score: int | None, label: str = "repo_buddy") -> str:
@@ -253,7 +236,6 @@ async def get_health_json(repo_id: str):
 async def get_public_report(scan_id: str, request: Request):
     """
     Public scan report — viewable without authentication.
-    Free-plan viewers see top-5 findings; the rest are locked.
     """
     scan = get_scan(scan_id)
     if not scan:
@@ -261,25 +243,12 @@ async def get_public_report(scan_id: str, request: Request):
 
     # Fetch repo_name for OG tags
     repo_name = None
-    plan = "free"
     with get_db() as db:
-        row = db.execute(
-            """SELECT r.full_name, u.plan
-                 FROM repos r
-                 LEFT JOIN users u ON u.id = r.user_id
-                WHERE r.id = ?""",
-            (scan["repo_id"],),
-        ).fetchone()
+        row = db.execute("SELECT full_name FROM repos WHERE id = ?", (scan["repo_id"],)).fetchone()
         if row:
             repo_name = row["full_name"]
-            plan = row["plan"] or "free"
 
     report = scan.get("report_json", {}) or {}
-    if isinstance(report, dict):
-        # Paywall gate uses the owning user's plan; non-owner viewers also see
-        # the same gated view (intentional — we don't surface paid-content for
-        # free repos via shared link).
-        report = gate_report(report, plan)
 
     return {
         "scan_id": scan["id"],
@@ -291,7 +260,6 @@ async def get_public_report(scan_id: str, request: Request):
         "scan_type": scan.get("scan_type"),
         "completed_at": scan.get("completed_at"),
         "report": report if isinstance(report, dict) else {},
-        "owner_plan": plan,
     }
 
 

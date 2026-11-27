@@ -1,18 +1,17 @@
 """
 repo_buddy — DAST Probe API
 
-POST /api/probe/start    → kicks off async probe, returns probe_id
-GET  /api/probe/{probe_id} → poll for results
-
-Now persisted to SQLite (survives server restarts).
+POST /api/probe/start      → validates the URL, starts an async probe, returns probe_id
+GET  /api/probe/{probe_id} → poll for results (persisted in SQLite)
 """
-import asyncio
 import uuid
 import json
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 from app.services.dast_service import probe_live_app
+from app.services.url_safety import UnsafeURLError, validate_public_http_url
 from app.database import get_db
+from app.rate_limit import limiter
 
 router = APIRouter()
 
@@ -42,15 +41,13 @@ async def _run_probe(probe_id: str, url: str):
 
 
 @router.post("/start")
-async def start_probe(body: ProbeRequest, background_tasks: BackgroundTasks):
+@limiter.limit("5/minute")
+async def start_probe(request: Request, body: ProbeRequest, background_tasks: BackgroundTasks):
     """Kick off an async DAST probe. Returns probe_id immediately."""
-    url = body.url.strip()
-    if not url:
-        raise HTTPException(status_code=422, detail="URL is required")
-
-    # Normalize
-    if not url.startswith(("http://", "https://")):
-        url = "https://" + url
+    try:
+        url = validate_public_http_url(body.url)
+    except UnsafeURLError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
     probe_id = str(uuid.uuid4())[:8]
 

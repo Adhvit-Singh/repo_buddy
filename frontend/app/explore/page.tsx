@@ -15,8 +15,8 @@ import ScanProgress from "@/components/ScanProgress";
 import VulnerabilityList from "@/components/VulnerabilityList";
 import {
   Shield, ArrowRight, RotateCcw, AlertTriangle,
-  Network, Layers, Cable, Workflow, BookOpen, Bug, LinkIcon, Lightbulb,
-  Lock, Share2, Github, History,
+  Layers, BookOpen, LinkIcon, Lightbulb,
+  Share2, Github,
   Zap, Rocket, CheckCircle, XCircle, Globe, Server, Copy, Check,
 } from "lucide-react";
 
@@ -40,14 +40,6 @@ function ExploreContent() {
   const [probeLoading, setProbeLoading] = useState(false);
   const [probeCopied, setProbeCopied] = useState<string | null>(null);
   const [fixCopied, setFixCopied] = useState<string | null>(null);
-  const [userPlan, setUserPlan] = useState<string>("free");
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem("gh_user");
-      if (stored) { const u = JSON.parse(stored); setUserPlan(u.plan || "free"); }
-    } catch {}
-  }, []);
 
   // Generate an AI-assistant-ready fix prompt (the moat)
   const generateFixPrompt = (vuln: { title: string; file: string; line?: number; description: string; severity: string; fix_suggestion?: string }) => {
@@ -312,25 +304,10 @@ Please:
   const currentGroup = TAB_GROUPS.find((g) => g.tabs.some((t) => t.id === activeTab)) ?? TAB_GROUPS[0];
 
   const handleAutofix = async () => {
-    const isBuilder = userPlan === "builder";
-
-    if (!isBuilder) {
-      if (confirm("Auto-Fix PRs require the Builder plan. Upgrade now?")) {
-        try {
-          const ghUser = JSON.parse(localStorage.getItem("gh_user") || "{}");
-          const userId = ghUser.id || "anonymous";
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-          const res = await fetch(`${apiUrl}/api/payments/checkout`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: userId, plan: "builder" }),
-          });
-          const data = await res.json();
-          if (data.url) { window.location.href = data.url; return; }
-          if (data.razorpay_order_id) { window.location.href = "/pricing"; return; }
-        } catch (e) {
-          console.error("Checkout error", e);
-        }
+    const token = localStorage.getItem("github_token");
+    if (!token) {
+      if (confirm("Auto-fix opens a pull request on your repo, so it needs you to sign in with GitHub. Sign in now?")) {
+        window.location.href = `${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/auth/github/login`;
       }
       return;
     }
@@ -340,7 +317,7 @@ Please:
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/api/repos/autofix`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("github_token")}` },
         body: JSON.stringify({
           repo_name: repoName,
           vulnerabilities: report.vulnerabilities,
@@ -681,7 +658,7 @@ Please:
               </h2>
               <p style={{ marginBottom: "1.5rem", color: "var(--text-secondary)", fontSize: "0.875rem" }}>
                 {explainMode === "simple"
-                  ? "Your app is like a restaurant. Here are the parts and how they work together."
+                  ? "Here are the main parts of your app and how they work together."
                   : "Component-level architecture showing service boundaries and communication patterns."}
               </p>
               {explainMode === "simple" && report?.tech_stack && (
@@ -707,19 +684,16 @@ Please:
                         </p>
                       </div>
                     )}
-                    <div>
-                      <div style={{ marginBottom: "4px" }}>
-                        <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "0.75rem", letterSpacing: "0.08em" }}>HOW THEY CONNECT</span>
+                    {report.simple_explanation && (
+                      <div>
+                        <div style={{ marginBottom: "4px" }}>
+                          <span style={{ fontWeight: 600, color: "var(--text-primary)", fontSize: "0.75rem", letterSpacing: "0.08em" }}>HOW IT WORKS</span>
+                        </div>
+                        <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6, paddingLeft: "2rem" }}>
+                          {report.simple_explanation}
+                        </p>
                       </div>
-                      <p style={{ color: "var(--text-secondary)", fontSize: "0.8125rem", lineHeight: 1.6, paddingLeft: "2rem" }}>
-                        The menu sends orders to the kitchen through a “window” called an API. When someone clicks “Sign Up,” the frontend sends a message to the backend.
-                      </p>
-                    </div>
-                    <div style={{ background: "var(--surface-main)", borderRadius: "6px", padding: "0.75rem 1rem", marginTop: "0.5rem" }}>
-                      <p style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", margin: 0 }}>
-                        Switch to &ldquo;Advanced&rdquo; mode (top right) to see the technical architecture diagram.
-                      </p>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1111,53 +1085,13 @@ Please:
           {/* Probe Live App Tab */}
           {activeTab === "probe" && (
             <div className="animate-in">
-              {/* Plan gate — DAST is Builder-only */}
-              {userPlan !== "builder" && (
-                <div style={{
-                  border: "1px solid var(--border-subtle)",
-                  borderRadius: "12px",
-                  background: "var(--surface-elevated)",
-                  padding: "3rem 2rem",
-                  textAlign: "center",
-                  marginBottom: "1.5rem",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: "1rem" }}>
-                    <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "var(--green-dim)", border: "1px solid var(--green-border)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Lock style={{ width: "20px", height: "20px", color: "var(--green)" }} />
-                    </div>
-                  </div>
-                  <h3 style={{ color: "var(--text-primary)", fontWeight: 700, fontSize: "1.15rem", marginBottom: "0.5rem" }}>
-                    DAST Probe is a Builder feature
-                  </h3>
-                  <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", maxWidth: "440px", margin: "0 auto 0.75rem", lineHeight: 1.6 }}>
-                    Run 20 real attack checks against your live app — CORS, exposed .env, SQL injection, Supabase RLS bypass, Stripe webhook forgery, and more. See the exact HTTP proof.
-                  </p>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center", marginBottom: "1.5rem" }}>
-                    {["CORS wildcard", "Supabase RLS", "Firebase test mode", "Stripe webhook", "API keys in JS", "SQL injection"].map(f => (
-                      <span key={f} style={{ fontSize: "0.72rem", background: "var(--surface-main)", border: "1px solid var(--border-subtle)", borderRadius: "999px", padding: "3px 10px", color: "var(--text-secondary)" }}>
-                        {f}
-                      </span>
-                    ))}
-                  </div>
-                  <a href="/pricing" className="btn btn-green" style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                    <Zap style={{ width: "14px", height: "14px" }} />
-                    Upgrade to Builder — $29/mo
-                  </a>
-                  <p style={{ color: "var(--text-tertiary)", fontSize: "0.75rem", marginTop: "0.75rem" }}>
-                    India? ₹999/mo via Razorpay (UPI / cards)
-                  </p>
-                </div>
-              )}
-
-              {/* Show probe UI only for builder */}
-              {userPlan === "builder" && (<>
               <div style={{ marginBottom: "1.5rem" }}>
                 <h2 className="text-headline" style={{ fontSize: "1.25rem", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   <Zap style={{ width: "18px", height: "18px", color: "var(--green)" }} />
                   Probe Live App
                 </h2>
                 <p style={{ color: "var(--text-secondary)", fontSize: "0.875rem", marginBottom: "1rem" }}>
-                  Enter your deployed URL. repo_buddy will run 20 unauthenticated security checks — CORS, exposed secrets, missing headers, rate limiting, SQL injection, Supabase RLS, Firebase rules, Stripe webhooks, and more. Takes ~30 seconds.
+                  Enter your deployed URL. repo_buddy will run 20 unauthenticated, read-only security checks — CORS, exposed secrets, missing headers, rate limiting, SQL injection, Supabase RLS, Firebase rules, Stripe webhooks, and more. Takes ~30 seconds.
                 </p>
                 <div style={{
                   background: "rgba(34,197,94,0.06)",
@@ -1329,7 +1263,6 @@ Please:
                   </p>
                 </div>
               )}
-              </>)}
             </div>
           )}
 

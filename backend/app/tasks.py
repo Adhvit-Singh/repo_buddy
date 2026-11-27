@@ -52,7 +52,7 @@ def process_full_scan(scan_id: str, github_url: str):
             if repo_id:
                 cached = get_scan_by_commit(repo_id, commit_sha)
                 if cached:
-                    print(f"CACHE HIT: Commit {commit_sha[:7]} already scanned → copying results")
+                    print(f"CACHE HIT: Commit {commit_sha[:7]} already scanned -> copying results")
                     update_scan_with_cached(scan_id, cached)
                     return
 
@@ -160,7 +160,7 @@ def process_diff_scan(scan_id: str, github_url: str, changed_files: list = None,
             except Exception as slack_err:
                 print(f"WARN: slack alert failed: {slack_err}")
 
-        print(f"DIFF SCAN: {github_url} — {len(changed_files or [])} files, "
+        print(f"DIFF SCAN: {github_url} - {len(changed_files or [])} files, "
               f"{len(report.get('vulnerabilities', []))} new issues found")
 
     except Exception as e:
@@ -210,25 +210,13 @@ def _read_changed_files(repo_path: str, changed_files: list) -> str:
 
 def _analyze_diff_content(content: str, changed_files: list) -> dict:
     """
-    Analyze diff content using Gemini Flash Lite.
-    Returns a lightweight delta report — only new vulnerabilities.
-    Skips the full RAG pipeline (no embeddings, no ChromaDB).
+    Analyze only the changed files of a push (no embeddings / vector store).
+    Returns a lightweight delta report with just the new findings.
     """
-    from app.config import GEMINI_API_KEY
-    
-    api_key = GEMINI_API_KEY
-    if not api_key:
-        return {
-            "health_score": None,
-            "vulnerabilities": [],
-            "scan_type": "diff",
-            "diff_summary": "Demo mode — no API key configured.",
-        }
+    from app.services.llm_router import active_provider, llm_json
 
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=api_key)
+    if active_provider() == "none":
+        raise RuntimeError("No LLM API key configured — diff scan cannot run.")
 
     prompt = f"""You are a security analyst reviewing code changes in an AI-built application.
 The following files were just changed. Check them for NEW security vulnerabilities introduced by these changes.
@@ -244,56 +232,14 @@ Code changes:
 
 Return a JSON object with:
 1. "vulnerabilities": array of objects with "title", "file", "line" (int or null), "description" (CONSEQUENCE-BASED), "severity" (critical/high/medium/low), "fix_suggestion"
-2. "changelog_summary": one sentence summarizing what the developer built or changed, in plain English (e.g. "Added a new Stripe payment gateway and fixed a layout bug").
+2. "changelog_summary": one sentence summarizing what the developer built or changed, in plain English.
 3. "health_delta": integer from -20 to +10 — how much this change affects the overall health score (negative = worse, positive = better)
 4. "scan_type": "diff"
 
 If no issues found, return empty vulnerabilities array and positive health_delta."""
 
-    # Use Flash Lite for diff scans — cheaper, faster, sufficient for focused analysis
-    model_candidates = [
-        'gemini-2.5-flash-lite',
-        'gemini-2.5-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-2.0-flash',
-    ]
-
-    response = None
-    last_err = None
-
-    for model_name in model_candidates:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                ),
-            )
-            print(f"INFO: Diff scan completed using {model_name}")
-            break
-        except Exception as e:
-            last_err = e
-            print(f"WARN: Diff scan call to {model_name} failed: {e}")
-            continue
-
-    if response is None:
-        return {
-            "health_score": None,
-            "vulnerabilities": [],
-            "scan_type": "diff",
-            "diff_summary": f"Analysis failed: {last_err}",
-        }
-
-    import json
-    try:
-        result = json.loads(response.text)
-        result["scan_type"] = "diff"
-        return result
-    except (json.JSONDecodeError, AttributeError):
-        return {
-            "health_score": None,
-            "vulnerabilities": [],
-            "scan_type": "diff",
-            "diff_summary": "Failed to parse analysis response.",
-        }
+    result = llm_json(prompt, pass_type="tick", max_tokens=4096)
+    if not isinstance(result, dict):
+        raise RuntimeError("AI analysis failed for this diff (all models unavailable or invalid output).")
+    result["scan_type"] = "diff"
+    return result

@@ -439,7 +439,7 @@ export default function ReportClient() {
             >
               Findings ({vulns.length})
             </h2>
-            <VulnerabilityList vulnerabilities={vulns} isPaywalled />
+            <VulnerabilityList vulnerabilities={vulns} />
           </section>
 
           {/* AI Sidekick */}

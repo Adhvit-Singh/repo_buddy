@@ -1,0 +1,14 @@
+# Netlify builds the Next.js frontend from frontend/.
+# NEXT_PUBLIC_API_URL is the backend's public URL (not a secret — it ships to the browser).
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_PUBLIC_API_URL = "https://repo-buddy-api.onrender.com"
+
+# Serve the Next.js app (SSR routes, images) with Netlify's official runtime
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
