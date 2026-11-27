@@ -1,38 +1,36 @@
 # Deploying repo_buddy (free tiers)
 
-| Part | Host | Why |
+| Part | Host | Notes |
 |---|---|---|
-| Backend (FastAPI, Docker) | Hugging Face Spaces — free CPU Space | Runs a long-lived Python container with no credit card |
-| Frontend (Next.js) | Netlify — free tier | Native Next.js support, builds from this repo |
+| Backend (FastAPI, Docker) | Render — free web service | Built from `backend/Dockerfile` via the `render.yaml` blueprint |
+| Frontend (Next.js) | Netlify — free tier | Built from `frontend/` via `netlify.toml` |
 
-## 1. Backend → Hugging Face Space
+(Hugging Face Spaces was the first choice, but Docker Spaces now need a paid plan.)
 
-1. Create a free account at <https://huggingface.co>.
-2. **New Space** → name it `repo-buddy` → SDK **Docker** → template **Blank** → visibility **Public**.
-3. In the Space: **Settings → Variables and secrets**, add:
-   - Secret `GEMINI_API_KEY` — your key from <https://aistudio.google.com/apikey>
-   - Variable `FRONTEND_URL` — your Netlify URL (step 2), e.g. `https://repo-buddy.netlify.app`
-   - Variable `BACKEND_URL` — the Space URL, e.g. `https://<hf-username>-repo-buddy.hf.space`
-4. Let GitHub publish the code to the Space:
-   - Hugging Face → **Settings → Access Tokens** → new token with **write** access.
-   - GitHub repo → **Settings → Secrets and variables → Actions**:
-     - secret `HF_TOKEN` = that token
-     - variable `HF_SPACE` = `<hf-username>/repo-buddy`
-   - GitHub → **Actions → Deploy backend to Hugging Face → Run workflow**.
-     After that it redeploys automatically whenever `backend/` changes on `main`.
-5. Check `https://<hf-username>-repo-buddy.hf.space/health` returns `{"status":"healthy",...}`.
+## 1. Backend → Render
 
-Notes
-- Free Spaces sleep after ~48 h without traffic; the first request then takes a minute to wake it.
-- The SQLite database lives in the container and resets when the Space restarts —
-  fine for a demo. For persistence, attach Space storage and set `DATABASE_PATH` to `/data/repo_buddy.db`.
+1. Sign up at <https://render.com> with your GitHub account.
+2. **New → Blueprint** → connect this repository → branch `main`. Render reads `render.yaml`
+   and proposes a free web service named `repo-buddy-api`.
+3. Fill in the prompted environment variables:
+   - `GEMINI_API_KEY` — your key from <https://aistudio.google.com/apikey>
+   - `BACKEND_URL` — `https://repo-buddy-api.onrender.com` (or whatever URL Render shows)
+   - `FRONTEND_URL` — your Netlify URL from step 2 (you can fill this in afterwards)
+   - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — leave empty unless you set up sign-in (step 3)
+4. **Apply**. The first build takes a few minutes. Check that `<BACKEND_URL>/health` returns `{"status":"healthy",...}`.
+
+Every push to `main` redeploys automatically.
+
+Free-plan notes:
+- The service sleeps after ~15 minutes without traffic. The next request takes about a minute to wake it.
+- The disk isn't persistent, so the SQLite database resets on every deploy or restart. That's fine for a demo.
 
 ## 2. Frontend → Netlify
 
-1. Netlify → **Add new site → Import an existing project → GitHub** → pick this repo.
-   `netlify.toml` already sets the base directory (`frontend`) and build command.
-2. **Site configuration → Environment variables**: `NEXT_PUBLIC_API_URL` = the Space URL from step 1.
-3. Deploy, then put the Netlify URL into the Space's `FRONTEND_URL` variable (CORS).
+1. Netlify → **Add new project → Import an existing project → GitHub** → pick this repo.
+   `netlify.toml` already sets the base directory (`frontend`) and the build command.
+2. **Project configuration → Environment variables**: `NEXT_PUBLIC_API_URL` = the Render URL.
+3. Deploy. Then set `FRONTEND_URL` on Render to the Netlify URL, which allows CORS.
 
 ## 3. Optional: GitHub sign-in
 
@@ -41,11 +39,11 @@ Needed only for the dashboard and auto-fix PRs.
 1. <https://github.com/settings/developers> → **New OAuth App**
    - Homepage URL: the Netlify URL
    - Callback URL: `<BACKEND_URL>/auth/github/callback`
-2. Add `GITHUB_CLIENT_ID` (variable) and `GITHUB_CLIENT_SECRET` (secret) to the Space.
+2. Put `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` into the Render service's environment.
 
 ## Free-tier limits to know
 
 - Gemini's free tier has per-minute and per-day request limits, and Google sometimes returns
   "high demand" errors. The backend retries and falls back across models, and every endpoint
-  is rate-limited per IP, but a busy day can still make scans slow or fail with a clear message.
+  is rate-limited per IP, but a busy day can still make scans slow or make them fail with a clear message.
 - Don't enable billing on the Gemini key if you want it to stay free.
