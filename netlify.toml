@@ -1,6 +1,5 @@
 # Netlify builds the Next.js frontend from frontend/.
-# Set NEXT_PUBLIC_API_URL in Netlify → Site configuration → Environment variables
-# to the backend's public URL (e.g. https://repo-buddy-api.onrender.com).
+# NEXT_PUBLIC_API_URL is the backend's public URL (not a secret — it ships to the browser).
 [build]
   base = "frontend"
   command = "npm run build"
@@ -8,3 +7,4 @@
 
 [build.environment]
   NODE_VERSION = "22"
+  NEXT_PUBLIC_API_URL = "https://repo-buddy-api.onrender.com"
